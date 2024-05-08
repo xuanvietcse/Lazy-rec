@@ -10,7 +10,6 @@ import numpy as np
 DEFAULT_ENCODINGS_PATH = Path("output/encodings.pkl")
 BOUNDING_BOX_COLOR = "blue"
 TEXT_COLOR = "white"
-font = ImageFont.truetype(font="/home/xuanviet/.local/share/fonts/ttf/SanFranciscoProFonts/SF-Pro.ttf",size=30)
 
 parser = argparse.ArgumentParser(description="Recognize faces in an image")
 parser.add_argument(
@@ -117,7 +116,7 @@ def _display_face(draw, bouding_box, name):
     top, right, bottom, left = bouding_box
     draw.rectangle(((left, top), (right, bottom)), outline=BOUNDING_BOX_COLOR)
     text_left, text_top, text_right, text_bottom = draw.textbbox(
-        (left, bottom), name, font=font
+        (left, bottom), name
     )
     draw.rectangle(
         ((text_left, text_top), (text_right, text_bottom)),
@@ -127,8 +126,7 @@ def _display_face(draw, bouding_box, name):
     draw.text(
         (text_left, text_top),
         name,
-        fill="white",
-        font=font
+        fill="white"
     )
 
 def validate(model: str="hog"):

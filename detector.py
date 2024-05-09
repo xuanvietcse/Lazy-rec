@@ -44,6 +44,13 @@ parser.add_argument(
     action="store_true", 
     help="Run in realtime"
 )
+parser.add_argument(
+    "--device",
+    action="store",
+    default="pc",
+    choices=["pc","pi"],
+    help="Select device you are using? pc (Laptop) or pi (Raspberry Pi)"
+)
 args = parser.parse_args()
 
 Path("training").mkdir(exist_ok=True)
@@ -138,17 +145,26 @@ def validate(model: str="hog"):
 
 def realtime(
         model: str = "hog",
+        device: str = "pc",
         encodings_location: Path = DEFAULT_ENCODINGS_PATH
 ) -> None:
-    # Get a reference to webcam #0 (the default one)
-    video_capture = cv2.VideoCapture(0)
-
+    if device == "pc":
+        # Get a reference to webcam #0 (the default one)
+        video_capture = cv2.VideoCapture(0)
+    else:
+        from picamera2 import Picamera2
+        picam2 = Picamera2()
+        picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
+        picam2.start()
     # Initialize some variables
     process_this_frame = True
 
     while True:
-        # Grab a single frame of video
-        ret, frame = video_capture.read()
+        if device == "pc":
+            # Grab a single frame of video
+            ret, frame = video_capture.read()
+        else:
+            frame = picam2.capture_array()
 
         # Only process every other frame of video to save time
         if process_this_frame:
@@ -225,4 +241,4 @@ if __name__ == "__main__":
     if args.test:
         recognize_faces(image_location=args.f, model=args.m)
     if args.exec:
-        realtime(model=args.m, encodings_location=DEFAULT_ENCODINGS_PATH)
+        realtime(model=args.m, device=args.device, encodings_location=DEFAULT_ENCODINGS_PATH)

@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 import argparse
 import cv2
 import numpy as np
+from sklearn.metrics import classification_report
 
 DEFAULT_ENCODINGS_PATH = Path("output/encodings.pkl")
 BOUNDING_BOX_COLOR = "blue"
@@ -80,7 +81,7 @@ def recognize_faces(
         image_location: str,
         model: str = "hog",
         encodings_location: Path = DEFAULT_ENCODINGS_PATH
-) -> None:
+):
     with encodings_location.open(mode="rb") as f:
         loaded_encodings = pickle.load(f)
     input_image = face_recognition.load_image_file(image_location)
@@ -95,6 +96,8 @@ def recognize_faces(
     pillow_image = Image.fromarray(input_image)
     draw = ImageDraw.Draw(pillow_image)
 
+    name_as_text = ''
+
     for bounding_box, unknown_encoding in zip(
         input_face_locations, input_face_encodings
     ):
@@ -103,9 +106,11 @@ def recognize_faces(
             name = "Unknown"
         # Remove print(name, bounding_box)
         _display_face(draw, bounding_box, name)
-    
+        name_as_text = name
     del draw
     pillow_image.show()
+    print(name_as_text)
+    return name_as_text
 
 def _recognize_face(unknown_encoding, loaded_encodings):
     boolean_matches = face_recognition.compare_faces(
@@ -137,11 +142,17 @@ def _display_face(draw, bouding_box, name):
     )
 
 def validate(model: str="hog"):
-    for filepath in Path("validation").rglob("*"):
+    y_true = []
+    y_pred = []
+    for filepath in Path("validation").glob("*/*"):
+        name_true = filepath.parent.name
+        y_true.append(name_true)
         if filepath.is_file():
-            recognize_faces(
+            name_pred = recognize_faces(
                 image_location=str(filepath.absolute()), model=model
             )
+            y_pred.append(name_pred)
+    print(classification_report(y_true=y_true, y_pred=y_pred))
 
 def realtime(
         model: str = "hog",

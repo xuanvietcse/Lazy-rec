@@ -68,7 +68,7 @@ def encode_known_faces(
         image = face_recognition.load_image_file(filepath)
 
         face_locations = face_recognition.face_locations(image, model=model)
-        face_encodings = face_recognition.face_encodings(image, face_locations)
+        face_encodings = face_recognition.face_encodings(image, face_locations, model='large')
 
         for encoding in face_encodings:
             names.append(name)
@@ -90,7 +90,7 @@ def recognize_faces(
         input_image, model=model
     )
     input_face_encodings = face_recognition.face_encodings(
-        input_image, input_face_locations
+        input_image, input_face_locations, model='large'
     )
 
     pillow_image = Image.fromarray(input_image)
@@ -114,7 +114,7 @@ def recognize_faces(
 
 def _recognize_face(unknown_encoding, loaded_encodings):
     boolean_matches = face_recognition.compare_faces(
-        loaded_encodings["encodings"], unknown_encoding
+        loaded_encodings["encodings"], unknown_encoding, tolerance=0.5
     )
     votes = Counter(
         name
@@ -191,7 +191,7 @@ def realtime(
 
             # Find all the faces and face encodings in the current frame of video
             face_locations = face_recognition.face_locations(rgb_small_frame)
-            face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+            face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations, model='large')
 
             # Load the encodings
             with encodings_location.open(mode="rb") as f:
@@ -201,7 +201,7 @@ def realtime(
             face_names = []
             for face_encoding in face_encodings:
                 # See if the face is a match for the known face
-                matches = face_recognition.compare_faces(loaded_encodings["encodings"], face_encoding)
+                matches = face_recognition.compare_faces(loaded_encodings["encodings"], face_encoding, tolerance=0.5)
                 name = "Unknown"
 
                 # Use the known face with the smallest distance to the new face

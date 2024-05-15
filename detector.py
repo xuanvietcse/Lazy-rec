@@ -108,7 +108,7 @@ def recognize_faces(
         _display_face(draw, bounding_box, name)
         name_as_text = name
     del draw
-    pillow_image.show()
+    # pillow_image.show() - disabled for reducing lagging on Pi (debugging purpose)
     print(name_as_text)
     return name_as_text
 

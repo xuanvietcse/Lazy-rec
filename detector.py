@@ -48,9 +48,9 @@ parser.add_argument(
 parser.add_argument(
     "--device",
     action="store",
-    default="pc",
-    choices=["pc","pi"],
-    help="Select device you are using? pc (Laptop) or pi (Raspberry Pi)"
+    default='0',
+    choices=['0','1','2'],
+    help="Select device you are using? Laptop or Raspberry Pi or Raspberry Pi with ESP32-CAM?"
 )
 args = parser.parse_args()
 
@@ -159,23 +159,30 @@ def realtime(
         device: str = "pc",
         encodings_location: Path = DEFAULT_ENCODINGS_PATH
 ) -> None:
-    if device == "pc":
+    if device == '0':
         # Get a reference to webcam #0 (the default one)
         video_capture = cv2.VideoCapture(0)
-    else:
+    elif device == '1':
         from picamera2 import Picamera2
         picam2 = Picamera2()
         picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
         picam2.start()
+    else:
+        from urllib.request import urlopen
+        url = r'http://192.168.1.9/capture'
     # Initialize some variables
     process_this_frame = True
 
     while True:
-        if device == "pc":
+        if device == '0':
             # Grab a single frame of video
             ret, frame = video_capture.read()
-        else:
+        elif device == '1':
             frame = picam2.capture_array()
+        else:
+            frame_resp = urlopen(url)
+            frame_np = np.asarray(bytearray(frame_resp.read()), dtype="uint8")
+            frame = cv2.imdecode(frame_np, -1)
 
         # Only process every other frame of video to save time
         if process_this_frame:
@@ -235,7 +242,7 @@ def realtime(
         # Hit 'q' on the keyboard to quit
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-    if device == "pc":
+    if device == '0':
         # Release handle to the webcam
         video_capture.release()
     cv2.destroyAllWindows()

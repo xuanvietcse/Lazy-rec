@@ -1,34 +1,32 @@
 from pathlib import Path
-import face_recognition
-import pickle
 from collections import Counter
 from PIL import Image, ImageDraw, ImageFont
-import argparse
-import cv2
-import numpy as np
 from sklearn.metrics import classification_report
-import pyrebase, datetime, os
 from time import sleep
+import pickle, face_recognition, argparse, cv2, pyrebase, datetime, os
+import numpy as np
 
+# Global Define
+DEFAULT_ENCODINGS_PATH = Path("output/encodings.pkl")
+BOUNDING_BOX_COLOR = "blue"
+TEXT_COLOR = "white"
 attendance_status_table = [-1, 0, 1] # -1: Failed, 0: Success, 1: IDLE
 Date = datetime.datetime.now()
 
+# Firebase Configuration - Put your Firebase Config here!
 config = {
-    "apiKey":"AIzaSyDpUMYNNoIc_AqJBmt1MMBwhOdrADC6HI8",
-    "authDomain":"test-3c6cb.firebaseapp.com",
-    "databaseURL":"https://test-3c6cb-default-rtdb.asia-southeast1.firebasedatabase.app",
-    "storageBucket":"test-3c6cb.appspot.com",
-    "serivceAccount":"/home/xuanviet/Downloads/test-3c6cb-firebase-adminsdk-osa8g-b53a0ba248.json"
+    "apiKey":"Your API Key",
+    "authDomain":"Your Firebase App domain",
+    "databaseURL":"Your database URL",
+    "storageBucket":"Your storage bucket",
+    "serivceAccount":"Your service account JSON path"
 }
 
 firebase = pyrebase.initialize_app(config)
 db = firebase.database()
 storage = firebase.storage()
 
-DEFAULT_ENCODINGS_PATH = Path("output/encodings.pkl")
-BOUNDING_BOX_COLOR = "blue"
-TEXT_COLOR = "white"
-
+# Arguments Parsing
 parser = argparse.ArgumentParser(description="Recognize faces in an image")
 parser.add_argument(
     "--train", 
@@ -66,17 +64,20 @@ parser.add_argument(
     "--device",
     action="store",
     default='0',
-    choices=['0','1','2'],
-    help="Select device you are using? Laptop or Raspberry Pi or Raspberry Pi with ESP32-CAM?"
+    choices=['0','1'],
+    help="Select device you are using? Laptop or Raspberry Pi?"
 )
 args = parser.parse_args()
 
+# Make sure of file structure
 Path("training").mkdir(exist_ok=True)
 Path("output").mkdir(exist_ok=True)
 Path("validation").mkdir(exist_ok=True)
 
+# Implementation of necessary function
 def encode_known_faces(
-        model: str = "hog", encodings_location: Path = DEFAULT_ENCODINGS_PATH
+        model: str = "hog", 
+        encodings_location: Path = DEFAULT_ENCODINGS_PATH
 ) -> None:
     names = []
     encodings = []
@@ -84,8 +85,12 @@ def encode_known_faces(
         name = filepath.parent.name
         image = face_recognition.load_image_file(filepath)
 
-        face_locations = face_recognition.face_locations(image, model=model)
-        face_encodings = face_recognition.face_encodings(image, face_locations, model='large')
+        face_locations = face_recognition.face_locations(
+            image, model=model
+        )
+        face_encodings = face_recognition.face_encodings(
+            image, face_locations, model='large'
+        )
 
         for encoding in face_encodings:
             names.append(name)
@@ -141,7 +146,7 @@ def _recognize_face(unknown_encoding, loaded_encodings):
     if votes:
         return votes.most_common(1)[0][0]
     
-def _display_face(draw, bouding_box, name):
+def _display_face(draw, bouding_box, name) -> None:
     top, right, bottom, left = bouding_box
     draw.rectangle(((left, top), (right, bottom)), outline=BOUNDING_BOX_COLOR)
     text_left, text_top, text_right, text_bottom = draw.textbbox(
@@ -158,7 +163,7 @@ def _display_face(draw, bouding_box, name):
         fill="white"
     )
 
-def validate(model: str="hog"):
+def validate(model: str="hog") -> None:
     y_true = []
     y_pred = []
     for filepath in Path("validation").glob("*/*"):
@@ -176,7 +181,11 @@ def realtime(
         device: str = "pc",
         encodings_location: Path = DEFAULT_ENCODINGS_PATH
 ) -> None:
+    # Initialize some variables
+    Button_1, Button_2 = True, True
     camera = -1
+    recog_enable = False
+
     if device == '0':
         camera = input('Choose your camera device? 0: Webcam, 1: ESP-CAM\n')
         if camera == '0':
@@ -184,7 +193,8 @@ def realtime(
             video_capture = cv2.VideoCapture(0)
         else:
             from urllib.request import urlopen
-            url = r'http://192.168.1.10/capture'
+            ip_address = input('Enter your IP of WebServer: \n')
+            url = r'http://' + ip_address + r'/capture'
     elif device == '1':
         camera = input('Choose your camera device? 0: External, 1: ESP-CAM\n')
         if camera == '0':
@@ -194,20 +204,24 @@ def realtime(
             picam2.start()
         else:
             from urllib.request import urlopen
-            url = r'http://192.168.1.10/capture'
+            ip_address = input('Enter your IP of WebServer: \n')
+            url = r'http://' + ip_address + r'/capture'
         import RPi.GPIO as GPIO
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(40, GPIO.IN, pull_up_down = GPIO.PUD_UP)
         GPIO.setup(38, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+        Button_1 = GPIO.input(40)
+        Button_2 = GPIO.input(38)
     else:
         print('Wrong device! Abort!')
         exit(0)
-    # Initialize some variables
-    recog_enable = False
 
     while True:
+        # Default attendance status
         attendance_status = attendance_status_table[2]
+        # Event wait
         key = cv2.waitKey(1)
+
         if device == '0':
             if camera == '0':
                 # Grab a single frame of video
@@ -238,9 +252,8 @@ def realtime(
         face_locations = []
         face_names = []
 
-        if key & 0xFF == ord('e') or GPIO.input(40) == False:
+        if key & 0xFF == ord('e') or Button_1 == False:
             recog_enable = True
-            print(recog_enable)
             sleep(0.3)
         if recog_enable:
             face_locations, face_names, attendance_status = _realtime(rgb_small_frame, face_locations, face_names,encodings_location, attendance_status)
@@ -275,9 +288,9 @@ def realtime(
         cv2.imshow('Video', frame)
 
         # Hit 'q' on the keyboard to quit
-        if key & 0xFF == ord('q') or GPIO.input(38) == False:
+        if key & 0xFF == ord('q') or Button_2 == False:
             break
-    if device == '0':
+    if device == '0' and camera == '0':
         # Release handle to the webcam
         video_capture.release()
     cv2.destroyAllWindows()
@@ -304,11 +317,6 @@ def _realtime(rgb_small_frame, face_locations, face_names, encodings_location, a
             attendance_status = attendance_status_table[1]
         face_names.append(name)
     return face_locations, face_names, attendance_status
-
-
-# Remove recognize_faces("unknown.jpg")
-# encode_known_faces()
-# Remove validate()
 
 if __name__ == "__main__":
     if args.train:

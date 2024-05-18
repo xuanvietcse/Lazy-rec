@@ -170,7 +170,6 @@ def realtime(
         encodings_location: Path = DEFAULT_ENCODINGS_PATH
 ) -> None:
     # Initialize some variables
-    Button_1, Button_2 = True, True
     camera = -1
     recog_enable = False
 
@@ -198,8 +197,6 @@ def realtime(
         GPIO.setmode(GPIO.BOARD)
         GPIO.setup(40, GPIO.IN, pull_up_down = GPIO.PUD_UP)
         GPIO.setup(38, GPIO.IN, pull_up_down = GPIO.PUD_UP)
-        Button_1 = GPIO.input(40)
-        Button_2 = GPIO.input(38)
     else:
         print('Wrong device! Abort!')
         exit(0)
@@ -209,6 +206,12 @@ def realtime(
         attendance_status = attendance_status_table[2]
         # Event wait
         key = cv2.waitKey(1)
+        if device=='1':
+            Button_1 = GPIO.input(40)
+            Button_2 = GPIO.input(38)
+        else:
+            Button_1 = True
+            Button_2 = True
 
         if device == '0':
             if camera == '0':

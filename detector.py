@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 from sklearn.metrics import classification_report
 import pyrebase, datetime, os
+from time import sleep
 
 attendance_status_table = [-1, 0, 1] # -1: Failed, 0: Success, 1: IDLE
 Date = datetime.datetime.now()
@@ -175,17 +176,32 @@ def realtime(
         device: str = "pc",
         encodings_location: Path = DEFAULT_ENCODINGS_PATH
 ) -> None:
+    camera = -1
     if device == '0':
-        # Get a reference to webcam #0 (the default one)
-        video_capture = cv2.VideoCapture(0)
+        camera = input('Choose your camera device? 0: Webcam, 1: ESP-CAM\n')
+        if camera == '0':
+            # Get a reference to webcam #0 (the default one)
+            video_capture = cv2.VideoCapture(0)
+        else:
+            from urllib.request import urlopen
+            url = r'http://192.168.1.10/capture'
     elif device == '1':
-        from picamera2 import Picamera2
-        picam2 = Picamera2()
-        picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
-        picam2.start()
+        camera = input('Choose your camera device? 0: External, 1: ESP-CAM\n')
+        if camera == '0':
+            from picamera2 import Picamera2
+            picam2 = Picamera2()
+            picam2.configure(picam2.create_preview_configuration(main={"format": 'XRGB8888', "size": (640, 480)}))
+            picam2.start()
+        else:
+            from urllib.request import urlopen
+            url = r'http://192.168.1.10/capture'
+        import RPi.GPIO as GPIO
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setup(40, GPIO.IN, pull_up_down = GPIO.PUD_UP)
+        GPIO.setup(38, GPIO.IN, pull_up_down = GPIO.PUD_UP)
     else:
-        from urllib.request import urlopen
-        url = r'http://192.168.1.10/capture'
+        print('Wrong device! Abort!')
+        exit(0)
     # Initialize some variables
     recog_enable = False
 
@@ -193,14 +209,20 @@ def realtime(
         attendance_status = attendance_status_table[2]
         key = cv2.waitKey(1)
         if device == '0':
-            # Grab a single frame of video
-            ret, frame = video_capture.read()
-        elif device == '1':
-            frame = picam2.capture_array()
+            if camera == '0':
+                # Grab a single frame of video
+                ret, frame = video_capture.read()
+            else:
+                frame_resp = urlopen(url)
+                frame_np = np.asarray(bytearray(frame_resp.read()), dtype="uint8")
+                frame = cv2.imdecode(frame_np, -1)
         else:
-            frame_resp = urlopen(url)
-            frame_np = np.asarray(bytearray(frame_resp.read()), dtype="uint8")
-            frame = cv2.imdecode(frame_np, -1)
+            if camera == '0':
+                frame = picam2.capture_array()
+            else:
+                frame_resp = urlopen(url)
+                frame_np = np.asarray(bytearray(frame_resp.read()), dtype="uint8")
+                frame = cv2.imdecode(frame_np, -1)
 
         # Only process every other frame of video to save time
         # Resize frame of video to 1/4 size for faster face recognition processing
@@ -216,9 +238,10 @@ def realtime(
         face_locations = []
         face_names = []
 
-        if key & 0xFF == ord('e'):
+        if key & 0xFF == ord('e') or GPIO.input(40) == False:
             recog_enable = True
             print(recog_enable)
+            sleep(0.3)
         if recog_enable:
             face_locations, face_names, attendance_status = _realtime(rgb_small_frame, face_locations, face_names,encodings_location, attendance_status)
 
@@ -252,7 +275,7 @@ def realtime(
         cv2.imshow('Video', frame)
 
         # Hit 'q' on the keyboard to quit
-        if key & 0xFF == ord('q'):
+        if key & 0xFF == ord('q') or GPIO.input(38) == False:
             break
     if device == '0':
         # Release handle to the webcam

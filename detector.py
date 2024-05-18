@@ -7,6 +7,22 @@ import argparse
 import cv2
 import numpy as np
 from sklearn.metrics import classification_report
+import pyrebase, datetime, os
+
+attendance_status_table = [-1, 0, 1] # -1: Failed, 0: Success, 1: IDLE
+Date = datetime.datetime.now()
+
+config = {
+    "apiKey":"AIzaSyDpUMYNNoIc_AqJBmt1MMBwhOdrADC6HI8",
+    "authDomain":"test-3c6cb.firebaseapp.com",
+    "databaseURL":"https://test-3c6cb-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "storageBucket":"test-3c6cb.appspot.com",
+    "serivceAccount":"/home/xuanviet/Downloads/test-3c6cb-firebase-adminsdk-osa8g-b53a0ba248.json"
+}
+
+firebase = pyrebase.initialize_app(config)
+db = firebase.database()
+storage = firebase.storage()
 
 DEFAULT_ENCODINGS_PATH = Path("output/encodings.pkl")
 BOUNDING_BOX_COLOR = "blue"
@@ -169,11 +185,13 @@ def realtime(
         picam2.start()
     else:
         from urllib.request import urlopen
-        url = r'http://192.168.1.9/capture'
+        url = r'http://192.168.1.10/capture'
     # Initialize some variables
-    process_this_frame = True
+    recog_enable = False
 
     while True:
+        attendance_status = attendance_status_table[2]
+        key = cv2.waitKey(1)
         if device == '0':
             # Grab a single frame of video
             ret, frame = video_capture.read()
@@ -185,39 +203,24 @@ def realtime(
             frame = cv2.imdecode(frame_np, -1)
 
         # Only process every other frame of video to save time
-        if process_this_frame:
-            # Resize frame of video to 1/4 size for faster face recognition processing
-            small_frame = cv2.resize(frame, (0,0), fx=0.25, fy=0.25)
+        # Resize frame of video to 1/4 size for faster face recognition processing
+        small_frame = cv2.resize(frame, (0,0), fx=0.25, fy=0.25)
 
-            # Conver the image from BGR color (which OpenCV using) to RGB color (which face_recognition using)
-            rgb_small_frame = small_frame[:,:,::-1]
+        # Conver the image from BGR color (which OpenCV using) to RGB color (which face_recognition using)
+        rgb_small_frame = small_frame[:,:,::-1]
 
-            #TODO: Fix compute_face_descriptor() on sample
-            code = cv2.COLOR_BGR2RGB
-            rgb_small_frame = cv2.cvtColor(rgb_small_frame, code)
+        #TODO: Fix compute_face_descriptor() on sample
+        code = cv2.COLOR_BGR2RGB
+        rgb_small_frame = cv2.cvtColor(rgb_small_frame, code)
 
-            # Find all the faces and face encodings in the current frame of video
-            face_locations = face_recognition.face_locations(rgb_small_frame)
-            face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations, model='large')
+        face_locations = []
+        face_names = []
 
-            # Load the encodings
-            with encodings_location.open(mode="rb") as f:
-                loaded_encodings = pickle.load(f)
-            
-            # 
-            face_names = []
-            for face_encoding in face_encodings:
-                # See if the face is a match for the known face
-                matches = face_recognition.compare_faces(loaded_encodings["encodings"], face_encoding, tolerance=0.5)
-                name = "Unknown"
-
-                # Use the known face with the smallest distance to the new face
-                face_distances = face_recognition.face_distance(loaded_encodings["encodings"], face_encoding)
-                best_match_index = np.argmin(face_distances)
-                if matches[best_match_index]:
-                    name = loaded_encodings["names"][best_match_index]
-                face_names.append(name)
-        process_this_frame = not process_this_frame
+        if key & 0xFF == ord('e'):
+            recog_enable = True
+            print(recog_enable)
+        if recog_enable:
+            face_locations, face_names, attendance_status = _realtime(rgb_small_frame, face_locations, face_names,encodings_location, attendance_status)
 
         # Display the results
         for (top, right, bottom, left), name in zip(face_locations, face_names):
@@ -236,16 +239,48 @@ def realtime(
             font = cv2.FONT_HERSHEY_DUPLEX
             cv2.putText(frame, name,(left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
 
+        if attendance_status == attendance_status_table[1]:
+            print("Checkin Successfully! Information: " + name + " - " + Date.strftime("%H:%M:%S %A %d/%m/%Y "))
+            img_name = name + "-" + Date.strftime("%H%M%S-%A-%d%m%Y") + ".jpeg"
+            cv2.imwrite(img_name, frame)
+            storage.child("AttendanceInformation/" + Date.strftime("%d%m%Y") + "/" + img_name).put(img_name)
+            os.remove(img_name)
+        elif attendance_status == attendance_status_table[0]:
+            print("Checkin Failed!")
+        recog_enable = False
         # Display the resulting image
         cv2.imshow('Video', frame)
 
         # Hit 'q' on the keyboard to quit
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if key & 0xFF == ord('q'):
             break
     if device == '0':
         # Release handle to the webcam
         video_capture.release()
     cv2.destroyAllWindows()
+
+def _realtime(rgb_small_frame, face_locations, face_names, encodings_location, attendance_status):
+    attendance_status = attendance_status_table[0]
+    face_locations = face_recognition.face_locations(rgb_small_frame)
+    face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+
+    with encodings_location.open(mode="rb") as f:
+        loaded_encodings = pickle.load(f)
+
+    for face_encoding in face_encodings:
+        # See if the face is match for the known face(s)
+        matches = face_recognition.compare_faces(loaded_encodings["encodings"], face_encoding, tolerance=0.5)
+        name = "Unknown"
+
+        # Use the known face with the smallest distance to the new face
+        face_distances = face_recognition.face_distance(loaded_encodings["encodings"], face_encoding)
+        best_match_index = np.argmin(face_distances)
+        if matches[best_match_index]:
+            name = loaded_encodings["names"][best_match_index]
+        if name != "Unknown":
+            attendance_status = attendance_status_table[1]
+        face_names.append(name)
+    return face_locations, face_names, attendance_status
 
 
 # Remove recognize_faces("unknown.jpg")

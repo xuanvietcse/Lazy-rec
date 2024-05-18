@@ -1,6 +1,5 @@
 from pathlib import Path
 from collections import Counter
-from PIL import Image, ImageDraw, ImageFont
 from sklearn.metrics import classification_report
 from time import sleep
 import pickle, face_recognition, argparse, cv2, pyrebase, datetime, os
@@ -115,9 +114,6 @@ def recognize_faces(
         input_image, input_face_locations, model='large'
     )
 
-    pillow_image = Image.fromarray(input_image)
-    draw = ImageDraw.Draw(pillow_image)
-
     name_as_text = ''
 
     for bounding_box, unknown_encoding in zip(
@@ -126,11 +122,8 @@ def recognize_faces(
         name = _recognize_face(unknown_encoding, loaded_encodings)
         if not name:
             name = "Unknown"
-        # Remove print(name, bounding_box)
-        _display_face(draw, bounding_box, name)
+        _display_face(input_image, bounding_box, name)
         name_as_text = name
-    del draw
-    # pillow_image.show() - disabled for reducing lagging on Pi (debugging purpose)
     print(name_as_text)
     return name_as_text
 
@@ -146,22 +139,17 @@ def _recognize_face(unknown_encoding, loaded_encodings):
     if votes:
         return votes.most_common(1)[0][0]
     
-def _display_face(draw, bouding_box, name) -> None:
+def _display_face(image, bouding_box, name) -> None:
     top, right, bottom, left = bouding_box
-    draw.rectangle(((left, top), (right, bottom)), outline=BOUNDING_BOX_COLOR)
-    text_left, text_top, text_right, text_bottom = draw.textbbox(
-        (left, bottom), name
-    )
-    draw.rectangle(
-        ((text_left, text_top), (text_right, text_bottom)),
-        fill="blue",
-        outline="blue"
-    )
-    draw.text(
-        (text_left, text_top),
-        name,
-        fill="white"
-    )
+    # Draw a box around the face
+    cv2.rectangle(image, (left, top), (right, bottom), (0, 0, 255), 2)
+    # Draw a label with a name below the face
+    cv2.rectangle(image, (left, bottom - 30), (right, bottom), (0, 0, 255), cv2.FILLED)
+    font = cv2.FONT_HERSHEY_DUPLEX
+    cv2.putText(image, name,(left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+    new_img = cv2.resize(image, (1280, 720))
+    cv2.imshow("Validation", new_img)
+    cv2.waitKey(20)
 
 def validate(model: str="hog") -> None:
     y_true = []
